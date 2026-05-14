@@ -1,0 +1,45 @@
+name: Deploy to ECR and EC2
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout del código
+      uses: actions/checkout@v3
+
+    - name: Configurar AWS
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build and push
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: Data_Eval2 # CAMBIAR A 'data-ep2' O 'frontend-ep2' SEGUN EL REPO
+        IMAGE_TAG: latest
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    - name: Deploy EC2
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ubuntu
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+          cd ~/Proyecto_DevOps
+          sudo docker-compose pull backend # CAMBIAR A 'db' O 'frontend' SEGUN EL REPO
+          sudo docker-compose up -d --no-deps backend # CAMBIAR A 'db' O 'frontend'
